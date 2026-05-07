@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MindMatch ⚡</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ═══ FLOATING UI CONTROLS ════════════════════════════════════════════════ -->
+<div class="floating-controls">
+  <button class="float-btn" id="theme-toggle" title="Ganti tema">🌙</button>
+  <button class="float-btn" id="sound-toggle" title="Toggle suara">🔊</button>
+</div>
+
+<!-- ═══ PARTICLES BG ════════════════════════════════════════════════════════ -->
+<div id="particles"></div>
+
+<!-- ═══ EMOJI REACTION OVERLAY ══════════════════════════════════════════════ -->
+<div id="reaction-overlay"></div>
+
+<!-- ═══ SCREEN: LOBBY ════════════════════════════════════════════════════════ -->
+<div id="screen-lobby" class="screen active">
+  <div class="lobby-wrap">
+    <div class="lobby-hero">
+      <div class="logo-float">
+        <span class="logo-icon">🃏</span>
+        <h1 class="logo-text">Mind<span>Match</span></h1>
+        <p class="logo-sub">Multiplayer Emoji Card Game</p>
+      </div>
+    </div>
+
+    <div class="lobby-form-wrap">
+      <div class="form-card">
+
+        <div class="form-group">
+          <label>Nama Kamu</label>
+          <div class="name-input-wrap">
+            <span class="name-avatar" id="name-avatar">🦊</span>
+            <input type="text" id="player-name" placeholder="Masukkan nama kamu..." maxlength="20" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="tab-switcher">
+          <button class="tab-btn active" data-tab="create">🏠 Buat Room</button>
+          <button class="tab-btn" data-tab="join">🚪 Gabung</button>
+          <button class="tab-btn" data-tab="leaderboard">🏆 Board</button>
+        </div>
+
+        <div class="tab-pane active" id="tab-create">
+          <div class="level-selector">
+            <p class="selector-label">Tingkat Kesulitan</p>
+            <div class="level-cards">
+              <div class="level-card active" data-level="easy">
+                <span class="level-icon">🌱</span>
+                <span class="level-name">Mudah</span>
+                <span class="level-desc">4×3 kartu</span>
+              </div>
+              <div class="level-card" data-level="medium">
+                <span class="level-icon">🌊</span>
+                <span class="level-name">Sedang</span>
+                <span class="level-desc">6×4 kartu</span>
+              </div>
+              <div class="level-card" data-level="hard">
+                <span class="level-icon">🔥</span>
+                <span class="level-name">Sulit</span>
+                <span class="level-desc">8×5 kartu</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="theme-selector">
+            <p class="selector-label">Tema Kartu</p>
+            <div class="theme-grid">
+              <button class="theme-btn active" data-theme="animals">🐾 Hewan</button>
+              <button class="theme-btn" data-theme="food">🍕 Makanan</button>
+              <button class="theme-btn" data-theme="nature">🌸 Alam</button>
+              <button class="theme-btn" data-theme="objects">🎸 Objek</button>
+              <button class="theme-btn" data-theme="space">🌌 Angkasa</button>
+            </div>
+          </div>
+
+          <button class="btn-primary btn-full" id="btn-create-room">✨ Buat Room</button>
+        </div>
+
+        <div class="tab-pane" id="tab-join">
+          <div class="form-group">
+            <label>Kode Room</label>
+            <input type="text" id="room-code-input" placeholder="Masukkan 6 digit kode..." maxlength="6" class="code-input" autocomplete="off">
+          </div>
+          <button class="btn-primary btn-full" id="btn-join-room">🚀 Gabung Room</button>
+        </div>
+
+        <div class="tab-pane" id="tab-leaderboard">
+          <div class="leaderboard-filters">
+            <button class="filter-btn active" data-filter="all">Semua</button>
+            <button class="filter-btn" data-filter="easy">Mudah</button>
+            <button class="filter-btn" data-filter="medium">Sedang</button>
+            <button class="filter-btn" data-filter="hard">Sulit</button>
+          </div>
+          <div id="leaderboard-list" class="leaderboard-list">
+            <div class="lb-loading">Memuat leaderboard...</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCREEN: WAITING ROOM ════════════════════════════════════════════════ -->
+<div id="screen-waiting" class="screen">
+  <div class="waiting-wrap">
+    <div class="waiting-header">
+      <div class="room-badge">
+        <span>Kode Room:</span>
+        <strong id="display-room-code">------</strong>
+        <button class="copy-btn" id="copy-code-btn" title="Copy kode">📋</button>
+      </div>
+      <div class="room-info-pill">
+        <span id="display-level-badge">Mudah</span>
+        <span id="display-theme-badge">Hewan</span>
+      </div>
+    </div>
+
+    <h2 class="waiting-title">Menunggu Pemain <span class="dot-anim">...</span></h2>
+    <p class="waiting-subtitle">Bagikan kode room ke teman-temanmu!</p>
+
+    <div id="players-grid" class="players-grid"></div>
+
+    <div class="waiting-actions">
+      <button class="btn-primary" id="btn-start-game" style="display:none">🎮 Mulai Game!</button>
+      <button class="btn-ghost" id="btn-leave-room">← Keluar Room</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ SCREEN: GAME ══════════════════════════════════════════════════════════ -->
+<div id="screen-game" class="screen">
+  <div class="game-layout">
+
+    <!-- Sidebar Kiri -->
+    <div class="sidebar left-sidebar">
+      <div class="score-panel">
+        <h3 class="panel-title">🏅 Skor</h3>
+        <div id="score-list" class="score-list"></div>
+      </div>
+      <div class="turn-panel">
+        <h3 class="panel-title">⏰ Giliran</h3>
+        <div id="current-turn-display" class="turn-display"></div>
+        <div class="timer-bar-wrap">
+          <div class="timer-bar" id="timer-bar"></div>
+        </div>
+        <div id="timer-text" class="timer-text">30</div>
+      </div>
+      <div class="powerup-panel" id="powerup-panel">
+        <h3 class="panel-title">⚡ Power-Up</h3>
+        <div class="powerup-btns">
+          <button class="pu-btn" data-type="peek">👁️ Intip</button>
+          <button class="pu-btn" data-type="freeze">❄️ Bekukan</button>
+          <button class="pu-btn" data-type="shuffle">🔀 Acak</button>
+        </div>
+        <p class="pu-count">Sisa: <span id="my-powerups">0</span></p>
+      </div>
+    </div>
+
+    <!-- Board Tengah -->
+    <div class="board-area">
+      <div id="game-board" class="game-board"></div>
+      <div id="match-message" class="match-message"></div>
+    </div>
+
+    <!-- Sidebar Kanan -->
+    <div class="sidebar right-sidebar">
+      <div class="reaction-panel">
+        <h3 class="panel-title">😂 Reaksi Cepat</h3>
+        <div class="reaction-btns">
+          <button class="react-btn" data-emoji="👍">👍</button>
+          <button class="react-btn" data-emoji="🔥">🔥</button>
+          <button class="react-btn" data-emoji="😱">😱</button>
+          <button class="react-btn" data-emoji="😂">😂</button>
+          <button class="react-btn" data-emoji="😭">😭</button>
+          <button class="react-btn" data-emoji="💀">💀</button>
+        </div>
+      </div>
+      <div class="chat-panel">
+        <h3 class="panel-title">💬 Chat</h3>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-wrap">
+          <input type="text" id="chat-input" placeholder="Kirim pesan..." maxlength="80">
+          <button id="chat-send-btn">➤</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ SCREEN: GAME OVER ════════════════════════════════════════════════════ -->
+<div id="screen-gameover" class="screen">
+  <div class="gameover-wrap">
+    <div class="fireworks" id="fireworks"></div>
+    <div class="gameover-card">
+      <div class="winner-crown">👑</div>
+      <div id="winner-display" class="winner-display"></div>
+      <div id="results-list" class="results-list"></div>
+      <div class="gameover-lb">
+        <h3>🏆 Top Leaderboard</h3>
+        <div id="gameover-lb-list"></div>
+      </div>
+      <div class="gameover-actions">
+        <button class="btn-primary" id="btn-play-again">🔄 Main Lagi</button>
+        <button class="btn-ghost" id="btn-back-home">🏠 Keluar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
