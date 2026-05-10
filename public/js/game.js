@@ -244,6 +244,13 @@ function initLobby() {
   $('player-name').addEventListener('input', e => {
     const name = e.target.value.trim();
     $('name-avatar').textContent = name ? getAvatar(name) : '🦊';
+    // Broadcast ke server bahwa user ini online
+    if (name.length >= 2) {
+      clearTimeout(state._onlineDebounce);
+      state._onlineDebounce = setTimeout(() => {
+        socket.emit('set_online', { name });
+      }, 500);
+    }
   });
 
   document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -319,7 +326,8 @@ function renderWaitingPlayers(room) {
   const isHost = room.host === me;
   $('btn-start-game').style.display = isHost ? 'inline-flex' : 'none';
   $('players-grid').innerHTML = room.players.map(p => `
-    <div class="player-slot filled ${p.id === room.host ? 'host-slot' : ''}">
+    <div class="player-slot filled ${p.id === room.host ? 'host-slot' : ''} ${p.connected === false ? 'offline-slot' : ''}">
+      <span class="slot-status"></span>
       <span class="slot-avatar">${p.avatar}</span>
       <div class="slot-name">${escapeHtml(p.name)}</div>
       ${p.id === room.host ? '<span class="slot-badge">👑 Host</span>' : ''}
@@ -439,6 +447,52 @@ function sendChat() {
   socket.emit('chat_message', { msg });
   input.value = '';
 }
+
+// ═══ ONLINE STATUS UI ════════════════════════════════════════════════════════
+function renderOnlineUsers(users) {
+  const count = users.length;
+  const countEl = $('online-count');
+  if (countEl) countEl.textContent = count;
+
+  // Lobby panel
+  const listEl = $('online-list');
+  if (listEl) {
+    if (!users.length) {
+      listEl.innerHTML = '<div style="color:var(--text-m);font-size:0.78rem">Belum ada yang online</div>';
+    } else {
+      listEl.innerHTML = users.map(u => `
+        <div class="online-user">
+          <span class="u-dot"></span>
+          <span>${u.avatar}</span>
+          <span class="u-name">${escapeHtml(u.name)}${u.id === myId() ? ' (Kamu)' : ''}</span>
+          <span class="u-status">online</span>
+        </div>
+      `).join('');
+    }
+  }
+
+  // In-game panel
+  const ingameEl = $('ingame-online-list');
+  if (ingameEl && state.roomData) {
+    const roomPlayerIds = new Set(state.roomData.players.map(p => p.id));
+    const roomUsers = state.roomData.players.map(p => {
+      const isOnline = users.some(u => u.id === p.id);
+      return { ...p, isOnline };
+    });
+    ingameEl.innerHTML = roomUsers.map(p => `
+      <div class="ingame-user ${p.isOnline ? '' : 'offline'}">
+        <span class="iu-dot"></span>
+        <span>${p.avatar}</span>
+        <span class="iu-name">${escapeHtml(p.name)}${p.id === myId() ? ' (Aku)' : ''}</span>
+        <span class="iu-badge">${p.isOnline ? 'Online' : 'Offline'}</span>
+      </div>
+    `).join('');
+  }
+}
+
+socket.on('online_users', ({ users, count }) => {
+  renderOnlineUsers(users);
+});
 
 // ═══ REACTIONS ═══════════════════════════════════════════════════════════════
 function initReactionControls() {
