@@ -450,35 +450,27 @@ function sendChat() {
 
 // ═══ ONLINE STATUS UI ════════════════════════════════════════════════════════
 function renderOnlineUsers(users) {
-  const count = users.length;
+  // Update count
   const countEl = $('online-count');
-  if (countEl) countEl.textContent = count;
+  if (countEl) countEl.textContent = users.length;
 
-  // Lobby panel
+  // Waiting room bar — tampilkan sebagai pill kecil
   const listEl = $('online-list');
   if (listEl) {
-    if (!users.length) {
-      listEl.innerHTML = '<div style="color:var(--text-m);font-size:0.78rem">Belum ada yang online</div>';
-    } else {
-      listEl.innerHTML = users.map(u => `
-        <div class="online-user">
-          <span class="u-dot"></span>
-          <span>${u.avatar}</span>
-          <span class="u-name">${escapeHtml(u.name)}${u.id === myId() ? ' (Kamu)' : ''}</span>
-          <span class="u-status">online</span>
-        </div>
-      `).join('');
-    }
+    listEl.innerHTML = users.map(u => `
+      <div class="online-user">
+        <span class="u-dot"></span>
+        <span>${u.avatar} ${escapeHtml(u.name)}${u.id === myId() ? ' (Kamu)' : ''}</span>
+      </div>
+    `).join('');
   }
 
   // In-game panel
   const ingameEl = $('ingame-online-list');
   if (ingameEl && state.roomData) {
-    const roomPlayerIds = new Set(state.roomData.players.map(p => p.id));
-    const roomUsers = state.roomData.players.map(p => {
-      const isOnline = users.some(u => u.id === p.id);
-      return { ...p, isOnline };
-    });
+    const roomUsers = state.roomData.players.map(p => ({
+      ...p, isOnline: users.some(u => u.id === p.id)
+    }));
     ingameEl.innerHTML = roomUsers.map(p => `
       <div class="ingame-user ${p.isOnline ? '' : 'offline'}">
         <span class="iu-dot"></span>
@@ -490,7 +482,7 @@ function renderOnlineUsers(users) {
   }
 }
 
-socket.on('online_users', ({ users, count }) => {
+socket.on('online_users', ({ users }) => {
   renderOnlineUsers(users);
 });
 
