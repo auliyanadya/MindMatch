@@ -57,6 +57,130 @@ const EMOJI_THEMES = {
 // ─── Room Management ───────────────────────────────────────────────────────
 const rooms = new Map();
 
+// ─── AI Bot System ────────────────────────────────────────────────────────
+const AI_NAMES = ['MindBot 🤖', 'RoboCard 🦾', 'MemBot 🧠', 'CardAI ⚡', 'SmartBot 🎯'];
+const AI_DIFFICULTIES = {
+  easy:   { thinkTime: 2000, memoryChance: 0.25, mistakeChance: 0.7  },
+  medium: { thinkTime: 1200, memoryChance: 0.55, mistakeChance: 0.35 },
+  hard:   { thinkTime: 600,  memoryChance: 0.85, mistakeChance: 0.1  }
+};
+
+function createAIPlayer(difficulty, config) {
+  const name = AI_NAMES[Math.floor(Math.random() * AI_NAMES.length)];
+  return {
+    id: 'AI_' + Date.now(),
+    name, avatar: '🤖',
+    score: 0, matches: 0,
+    powerups: config.powerups,
+    connected: true,
+    isAI: true,
+    difficulty,
+    memory: {} // { cardId: emoji } — kartu yang sudah pernah "dilihat" AI
+  };
+}
+
+function aiTakeTurn(room, roomCode) {
+  const ai = room.players.find(p => p.isAI && p.id === room.currentTurn);
+  if (!ai || room.state !== 'playing') return;
+
+  const diff = AI_DIFFICULTIES[ai.difficulty] || AI_DIFFICULTIES.medium;
+  const unmatched = room.board.filter(c => !c.matched);
+  if (unmatched.length < 2) return;
+
+  // AI lihat semua kartu yang terbuka sebelumnya (update memory)
+  room.board.forEach(c => {
+    if (!c.matched) ai.memory[c.id] = c.emoji;
+  });
+
+  let firstCard = null;
+  let secondCard = null;
+
+  // Coba cari pasangan yang sudah diingat AI
+  if (Math.random() > diff.mistakeChance) {
+    const emojiCount = {};
+    Object.entries(ai.memory).forEach(([id, emoji]) => {
+      if (!room.board[id]?.matched) {
+        if (!emojiCount[emoji]) emojiCount[emoji] = [];
+        emojiCount[emoji].push(parseInt(id));
+      }
+    });
+    const knownPair = Object.values(emojiCount).find(ids => ids.length >= 2);
+    if (knownPair) {
+      firstCard = room.board[knownPair[0]];
+      secondCard = room.board[knownPair[1]];
+    }
+  }
+
+  // Kalau tidak tahu pasangannya, pilih random
+  if (!firstCard) {
+    const shuffled = [...unmatched].sort(() => Math.random() - 0.5);
+    firstCard = shuffled[0];
+    // Coba cari pasangan dari memory untuk kartu kedua
+    const pair = unmatched.find(c => c.id !== firstCard.id && ai.memory[c.id] === firstCard.emoji);
+    secondCard = (Math.random() < diff.memoryChance && pair) ? pair : shuffled[1];
+  }
+
+  // AI flip kartu pertama
+  setTimeout(() => {
+    if (room.state !== 'playing' || room.currentTurn !== ai.id) return;
+    firstCard.flipped = true;
+    room.flippedCards = [firstCard.id];
+    io.to(roomCode).emit('card_flipped', { cardId: firstCard.id, emoji: firstCard.emoji, flippedCards: [firstCard.id] });
+
+    // AI flip kartu kedua
+    setTimeout(() => {
+      if (room.state !== 'playing' || room.currentTurn !== ai.id) return;
+      secondCard.flipped = true;
+      room.flippedCards = [firstCard.id, secondCard.id];
+      io.to(roomCode).emit('card_flipped', { cardId: secondCard.id, emoji: secondCard.emoji, flippedCards: [firstCard.id, secondCard.id] });
+
+      // Cek match
+      setTimeout(() => {
+        if (firstCard.emoji === secondCard.emoji) {
+          firstCard.matched = true; secondCard.matched = true;
+          firstCard.flipped = false; secondCard.flipped = false;
+          room.consecutiveMatches[ai.id] = (room.consecutiveMatches[ai.id] || 0) + 1;
+          const combo = room.consecutiveMatches[ai.id];
+          ai.score += 10 + (combo > 1 ? (combo - 1) * 5 : 0);
+          ai.matches++;
+          room.flippedCards = [];
+          delete ai.memory[firstCard.id];
+          delete ai.memory[secondCard.id];
+
+          io.to(roomCode).emit('cards_matched', {
+            cardIds: [firstCard.id, secondCard.id],
+            players: room.players,
+            currentTurn: room.currentTurn,
+            combo
+          });
+
+          const allMatched = room.board.every(c => c.matched);
+          if (allMatched) {
+            clearInterval(room.turnTimer);
+            room.state = 'finished';
+            const elapsed = Math.floor((Date.now() - room.startTime) / 1000);
+            const winner = room.players.reduce((a, b) => a.score > b.score ? a : b);
+            const results = room.players.map(p => ({ ...p, time: elapsed }));
+            results.filter(p => !p.isAI).forEach(p => {
+              addToLeaderboard({ name: p.name, score: p.score, matches: p.matches, level: room.level, time: elapsed, avatar: p.avatar });
+            });
+            io.to(roomCode).emit('game_over', { winner, results, time: elapsed, leaderboard: readLeaderboard().slice(0, 10) });
+          } else {
+            startTurnTimer(roomCode);
+            setTimeout(() => aiTakeTurn(room, roomCode), diff.thinkTime);
+          }
+        } else {
+          firstCard.flipped = false; secondCard.flipped = false;
+          room.flippedCards = [];
+          room.consecutiveMatches[ai.id] = 0;
+          io.to(roomCode).emit('cards_mismatched', { cardIds: [firstCard.id, secondCard.id] });
+          passTurn(room, roomCode);
+        }
+      }, 1000);
+    }, diff.thinkTime);
+  }, diff.thinkTime);
+}
+
 // ─── Online Users (global lobby) ──────────────────────────────────────────
 const onlineUsers = new Map(); // socketId -> { name, avatar, status }
 
@@ -167,6 +291,12 @@ function passTurn(room, roomCode) {
   room.consecutiveMatches[room.currentTurn] = 0;
   io.to(roomCode).emit('turn_changed', { currentTurn: room.currentTurn, board: getRoomPublic(room).board });
   startTurnTimer(roomCode);
+
+  // Kalau giliran AI, jalankan otomatis
+  if (next.isAI) {
+    const diff = AI_DIFFICULTIES[next.difficulty] || AI_DIFFICULTIES.medium;
+    setTimeout(() => aiTakeTurn(room, roomCode), diff.thinkTime + 500);
+  }
 }
 
 // ─── Socket.IO Events ──────────────────────────────────────────────────────
@@ -199,8 +329,44 @@ io.on('connection', (socket) => {
     socket.join(room.code);
     socket.data.roomCode = room.code;
     socket.data.name = name;
+    // Auto-daftarkan ke onlineUsers
+    const avatar = getAvatar(name);
+    socket.data.avatar = avatar;
+    onlineUsers.set(socket.id, { id: socket.id, name, avatar, status: 'online' });
+    broadcastOnlineUsers();
     socket.emit('room_created', { room: getRoomPublic(room) });
     console.log(`[room] Created ${room.code} by ${name}`);
+  });
+
+  // ── Create Room VS AI ───────────────────────────────────────────────────
+  socket.on('create_room_vs_ai', ({ name, level, theme, aiDifficulty }) => {
+    if (!name || !level || !LEVELS[level]) return socket.emit('error', { msg: 'Data tidak valid.' });
+    const room = createRoom(name, level, theme || 'animals', socket.id);
+    const config = LEVELS[level];
+    const ai = createAIPlayer(aiDifficulty || level, config);
+    room.players.push(ai);
+    room.hasAI = true;
+    socket.join(room.code);
+    socket.data.roomCode = room.code;
+    socket.data.name = name;
+
+    // Auto start game
+    room.state = 'playing';
+    room.startTime = Date.now();
+    room.currentTurn = room.players[0].id;
+    room.consecutiveMatches = {};
+    room.players.forEach(p => { room.consecutiveMatches[p.id] = 0; });
+
+    socket.emit('room_created', { room: getRoomPublic(room) });
+    socket.emit('game_started', { room: getRoomPublic(room) });
+    startTurnTimer(room.code);
+
+    // Kalau AI duluan
+    if (room.currentTurn === ai.id) {
+      const diff = AI_DIFFICULTIES[ai.difficulty] || AI_DIFFICULTIES.medium;
+      setTimeout(() => aiTakeTurn(room, room.code), diff.thinkTime);
+    }
+    console.log(`[AI] Room ${room.code} created vs AI (${ai.difficulty})`);
   });
 
   // ── Join Room ────────────────────────────────────────────────────────────
@@ -221,6 +387,11 @@ io.on('connection', (socket) => {
     socket.data.roomCode = room.code;
     socket.data.name = name;
 
+    // Auto-daftarkan ke onlineUsers
+    const avatar2 = getAvatar(name);
+    socket.data.avatar = avatar2;
+    onlineUsers.set(socket.id, { id: socket.id, name, avatar: avatar2, status: 'online' });
+    broadcastOnlineUsers();
     io.to(room.code).emit('player_joined', { player, room: getRoomPublic(room) });
     socket.emit('joined_room', { room: getRoomPublic(room) });
     console.log(`[room] ${name} joined ${room.code}`);
@@ -242,6 +413,15 @@ io.on('connection', (socket) => {
 
     io.to(code).emit('game_started', { room: getRoomPublic(room) });
     startTurnTimer(code);
+
+    // Broadcast status online khusus pemain di room ini agar semua sinkron
+    const roomOnlineUsers = room.players.map(p => ({
+      id: p.id,
+      name: p.name,
+      avatar: p.avatar,
+      status: 'online'
+    }));
+    io.to(code).emit('room_online_users', { users: roomOnlineUsers });
     console.log(`[game] Started in ${code}`);
   });
 
@@ -294,8 +474,8 @@ io.on('connection', (socket) => {
             const winner = room.players.reduce((a, b) => a.score > b.score ? a : b);
             const results = room.players.map(p => ({ ...p, time: elapsed }));
 
-            // Save to leaderboard
-            results.forEach(p => {
+            // Save to leaderboard — skip bot
+            results.filter(p => !p.isAI).forEach(p => {
               addToLeaderboard({ name: p.name, score: p.score, matches: p.matches, level: room.level, time: elapsed, avatar: p.avatar });
             });
 
@@ -420,6 +600,17 @@ io.on('connection', (socket) => {
     // Hapus dari online users global
     onlineUsers.delete(socket.id);
     broadcastOnlineUsers();
+
+    // Update ingame online status jika disconnect saat game berlangsung
+    if (room && room.state === 'playing') {
+      const roomOnlineUsers = room.players.map(p => ({
+        id: p.id,
+        name: p.name,
+        avatar: p.avatar,
+        status: p.connected ? 'online' : 'offline'
+      }));
+      io.to(code).emit('room_online_users', { users: roomOnlineUsers });
+    }
     console.log(`[-] Disconnected: ${socket.id}`);
   });
 });

@@ -116,6 +116,7 @@ function setTheme(t) {
   state.theme = t;
   document.documentElement.setAttribute('data-theme', t);
   $('theme-toggle').textContent = t === 'dark' ? '☀️' : '🌙';
+  $('theme-toggle').title = t === 'dark' ? 'Mode Terang' : 'Mode Gelap';
   localStorage.setItem('mm_theme', t);
 }
 
@@ -262,12 +263,36 @@ function initLobby() {
     });
   });
 
+  // AI difficulty selector
+  state.selectedAIDiff = 'easy';
+  document.querySelectorAll('.ai-diff-card').forEach(card => {
+    card.addEventListener('click', () => {
+      SFX.click();
+      document.querySelectorAll('.ai-diff-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      state.selectedAIDiff = card.dataset.ai;
+    });
+  });
+
   $('btn-create-room').addEventListener('click', () => {
     const name = $('player-name').value.trim();
     if (!name) { toast('Masukkan nama kamu dulu!', 'error'); return; }
     state.playerName = name;
     SFX.click();
     socket.emit('create_room', { name, level: state.selectedLevel, theme: state.selectedTheme });
+  });
+
+  $('btn-vs-ai') && $('btn-vs-ai').addEventListener('click', () => {
+    const name = $('player-name').value.trim();
+    if (!name) { toast('Masukkan nama kamu dulu!', 'error'); return; }
+    state.playerName = name;
+    SFX.click();
+    socket.emit('create_room_vs_ai', {
+      name, level: state.selectedLevel,
+      theme: state.selectedTheme,
+      aiDifficulty: state.selectedAIDiff
+    });
+    toast('Memuat lawan bot... 🤖', 'info');
   });
 
   $('btn-join-room').addEventListener('click', () => {
@@ -347,6 +372,20 @@ function initGame(room) {
   updatePowerupUI(room);
   $('chat-messages').innerHTML = '';
   if (room.chat) room.chat.forEach(addChatMessage);
+
+  // Render ingame online status langsung dengan data dari room
+  const ingameEl = $('ingame-online-list');
+  if (ingameEl) {
+    ingameEl.innerHTML = room.players.map(p => `
+      <div class="ingame-user">
+        <span class="iu-dot"></span>
+        <span>${p.avatar}</span>
+        <span class="iu-name">${escapeHtml(p.name)}${p.id === myId() ? ' (Aku)' : ''}</span>
+        <span class="iu-badge">Online</span>
+      </div>
+    `).join('');
+  }
+
   showScreen('screen-game');
 }
 
@@ -384,24 +423,45 @@ function flipCardUI(cardId, emoji) {
 }
 
 function renderScores(players, currentTurn) {
+  // Simpan skor lama buat animasi bump
+  const oldScores = {};
+  document.querySelectorAll('.score-item').forEach(el => {
+    const pts = el.querySelector('.score-pts');
+    if (pts) oldScores[el.dataset.pid] = parseInt(pts.textContent) || 0;
+  });
+
   $('score-list').innerHTML = players.map(p => `
-    <div class="score-item ${p.id === currentTurn ? 'current-turn' : ''}">
+    <div class="score-item ${p.id === currentTurn ? 'current-turn' : ''} ${p.isAI ? 'ai-player' : ''}" data-pid="${p.id}">
       <div class="score-avatar">${p.avatar}</div>
       <div class="score-info">
-        <div class="score-name">${escapeHtml(p.name)}${p.id === myId() ? ' (Aku)' : ''}</div>
+        <div class="score-name">
+          ${escapeHtml(p.name)}${p.id === myId() ? ' (Aku)' : ''}
+          ${p.isAI ? '<span class="ai-badge-small">BOT</span>' : ''}
+        </div>
         <div class="score-matches">${p.matches} pasang</div>
       </div>
-      <div class="score-pts">${p.score}</div>
+      <div class="score-pts" id="pts-${p.id}">${p.score}</div>
     </div>
   `).join('');
+
+  // Animasi bump kalau skor naik
+  players.forEach(p => {
+    if (oldScores[p.id] !== undefined && p.score > oldScores[p.id]) {
+      const el = $(`pts-${p.id}`);
+      if (el) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+    }
+  });
 }
 
 function renderTurnDisplay(currentTurnId, players) {
   const player = players?.find(p => p.id === currentTurnId);
   if (!player) return;
   const isMe = currentTurnId === myId();
-  $('current-turn-display').innerHTML = `${player.avatar} ${escapeHtml(player.name)}${isMe ? ' 👈' : ''}`;
-  $('current-turn-display').style.color = isMe ? '#FFE66D' : 'var(--text-m)';
+  const isAI = player.isAI;
+  const el = $('current-turn-display');
+  el.innerHTML = `${player.avatar} ${escapeHtml(player.name)}${isMe ? ' 👈' : ''}${isAI ? ' <span class="ai-badge-small">BOT</span>' : ''}`;
+  el.style.color = isMe ? '#FFE66D' : isAI ? '#FF6B6B' : 'var(--text-m)';
+  el.className = `turn-display${isMe ? ' my-turn' : ''}`;
 }
 
 function updateTimerBar(timeLeft, maxTime = 30) {
@@ -409,8 +469,10 @@ function updateTimerBar(timeLeft, maxTime = 30) {
   const bar = $('timer-bar');
   bar.style.width = `${pct}%`;
   bar.className = `timer-bar${timeLeft <= 10 ? ' warning' : ''}`;
-  $('timer-text').textContent = timeLeft;
-  $('timer-text').style.color = timeLeft <= 10 ? '#FF6B6B' : 'var(--c3)';
+  const txt = $('timer-text');
+  txt.textContent = timeLeft;
+  txt.style.color = timeLeft <= 10 ? '#FF6B6B' : 'var(--c3)';
+  txt.className = `timer-text${timeLeft <= 5 ? ' danger' : ''}`;
 }
 
 function updatePowerupUI(room) {
@@ -484,6 +546,27 @@ function renderOnlineUsers(users) {
 
 socket.on('online_users', ({ users }) => {
   renderOnlineUsers(users);
+});
+
+// Khusus untuk update status online di dalam game
+socket.on('room_online_users', ({ users }) => {
+  const ingameEl = $('ingame-online-list');
+  if (!ingameEl || !state.roomData) return;
+
+  // Merge data room players dengan status online terbaru
+  const ingameUsers = state.roomData.players.map(p => {
+    const found = users.find(u => u.id === p.id);
+    return { ...p, isOnline: found ? found.status === 'online' : p.connected !== false };
+  });
+
+  ingameEl.innerHTML = ingameUsers.map(p => `
+    <div class="ingame-user ${p.isOnline ? '' : 'offline'}">
+      <span class="iu-dot"></span>
+      <span>${p.avatar}</span>
+      <span class="iu-name">${escapeHtml(p.name)}${p.id === myId() ? ' (Aku)' : ''}</span>
+      <span class="iu-badge">${p.isOnline ? 'Online' : 'Offline'}</span>
+    </div>
+  `).join('');
 });
 
 // ═══ REACTIONS ═══════════════════════════════════════════════════════════════

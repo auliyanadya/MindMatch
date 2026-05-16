@@ -4,8 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MindMatch ⚡</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -30,6 +28,13 @@
         <span class="logo-icon">🃏</span>
         <h1 class="logo-text">Mind<span>Match</span></h1>
         <p class="logo-sub">Multiplayer Emoji Card Game</p>
+      </div>
+      <div class="hero-features">
+        <div class="hero-feat"><span class="hero-feat-icon">⚡</span> Real-time multiplayer via WebSocket<span class="hero-feat-dot"></span></div>
+        <div class="hero-feat"><span class="hero-feat-icon">🎯</span> 3 level kesulitan + 5 tema kartu<span class="hero-feat-dot"></span></div>
+        <div class="hero-feat"><span class="hero-feat-icon">🤖</span> Mode VS AI dengan 3 tingkat bot<span class="hero-feat-dot"></span></div>
+        <div class="hero-feat"><span class="hero-feat-icon">💬</span> Chat & reaksi emoji real-time<span class="hero-feat-dot"></span></div>
+        <div class="hero-feat"><span class="hero-feat-icon">🏆</span> Leaderboard global<span class="hero-feat-dot"></span></div>
       </div>
     </div>
 
@@ -84,6 +89,30 @@
           </div>
 
           <button class="btn-primary btn-full" id="btn-create-room">✨ Buat Room</button>
+
+          <div class="divider-or"><span>atau</span></div>
+
+          <div class="vs-ai-section">
+            <p class="selector-label">⚔️ Main VS AI</p>
+            <div class="ai-diff-cards">
+              <div class="ai-diff-card active" data-ai="easy">
+                <span class="ai-icon">🟢</span>
+                <span class="ai-name">Pemula</span>
+                <span class="ai-desc">Bot pelupa</span>
+              </div>
+              <div class="ai-diff-card" data-ai="medium">
+                <span class="ai-icon">🟡</span>
+                <span class="ai-name">Normal</span>
+                <span class="ai-desc">Bot biasa</span>
+              </div>
+              <div class="ai-diff-card" data-ai="hard">
+                <span class="ai-icon">🔴</span>
+                <span class="ai-name">Expert</span>
+                <span class="ai-desc">Bot jenius</span>
+              </div>
+            </div>
+            <button class="btn-ai btn-full" id="btn-vs-ai">🤖 Lawan Bot</button>
+          </div>
         </div>
 
         <div class="tab-pane" id="tab-join">
